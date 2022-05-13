@@ -6,6 +6,9 @@ class Board < ApplicationRecord
     validates :cells, presence: true
     validates :token, uniqueness: true
 
+    has_many :board_players, dependent: :destroy
+    has_many :players, through: :board_players
+
     def set_token
         self.token = SecureRandom.uuid
     end
