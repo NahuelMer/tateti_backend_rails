@@ -1,20 +1,18 @@
 class BoardsController < ApplicationController
 
-    # Recordatorio: comentar todo al terminar
-    # TODO: verificar token al unirse al tablero (o poner un codigo) - implementar tokens - hacer que la logica funcione con los players
-
-    before_action :set_board, only: [:show, :update, :destroy, :join]
-    # before_action :check_token, only: [:update, :destroy] (quiza el join iria aca tambien)
+    before_action :set_board, only: [:show, :update, :destroy]
+    before_action :search_board_by_code, only: [:join]
+    before_action :check_token, only: [:update, :destroy]
     before_action :check_turn, only: [:update]
     before_action :check_game_ended, only: [:update]
     before_action :check_empty_cell, only: [:update]
 
-    # Inicializa el tablero y tira el token de la sala
+    # Crea el tablero y devuelve sus datos incluyendo token y codigo de la sala
     def create
         @board = Board.new()
 
         if @board.save
-            @board_player = BoardPlayer.find_or_initialize_by(board_id: @board.id, player_id: params[:player_id])
+            @board_player = BoardPlayer.find_or_initialize_by(chip: "X", board_id: @board.id, player_id: params[:player_id])
             if @board_player.persisted?
                 render status: 200, json: { message: "La partida ya fue creada" }
             elsif @board_player.save
@@ -29,14 +27,20 @@ class BoardsController < ApplicationController
         
     end
 
-    # Devuelve el estado del tablero
+    # Devuelve el tablero buscado incluyendo el estado de sus celdas
     def show
         render status: 200, json: { board: @board }
     end
 
-    # El segundo jugador se une al tablero
+    # Devuelve todos los tableros
+    def index
+        @board = Board.all
+        render status: 200, json: { boards: @board }
+    end
+
+    # Permite que un jugador se una a un tablero ya creado por otro jugador
     def join
-        @board_player = BoardPlayer.find_or_initialize_by(board_id: @board.id, player_id: params[:player_id])
+        @board_player = BoardPlayer.find_or_initialize_by(chip: "O", board_id: @board.id, player_id: params[:player_id])
 
         if @board_player.persisted?
             render status: 200, json: { message: "El jugador ya se unio a la partida" }
@@ -47,30 +51,26 @@ class BoardsController < ApplicationController
         end
     end
 
-    # Recibe el movimiento y actualiza el tablero (tambien finaliza la partida)
+    # Recibe el movimiento ( fila, celda y jugador ), verifica si hay un ganador o un empate y actualiza el tablero
     def update
 
-        # verifica el token, luego el turn_name que sea correcto y asigna los valores al tablero(con un row y cell)
+        def current_turn = @board_player.chip
 
-        def current_turn = params[:turn_name] # probar solo con params en la verifiicaion
-
-        @board.assign_attributes(turn_name: @board.turn_name == "X" ? "O" : "X")
+        @board.assign_attributes(turn_name: @board_player.chip == "X" ? "O" : "X")
 
         @board.assign_attributes(turn_counter: @board.turn_counter + 1)
 
-        @board.cells[params[:row]][params[:cell]] = params[:turn_name]
-        puts @board.cells[params[:row]][params[:cell]]
+        @board.cells[params[:row]][params[:cell]] = current_turn
 
-
-        if @board.turn_counter == 8
-            check_draw
+        if @board.turn_counter == 9
+            render_draw_response
         else
             check_win
         end
- 
+
     end
 
-    # Reinicia la partida eliminando el board
+    # Elimina el tablero
     def destroy
         if @board.destroy
             render status: 200, json: { message: "El tablero ha sido eliminado" }
@@ -80,10 +80,6 @@ class BoardsController < ApplicationController
     end
 
     private
-
-    def board_params
-        params.require(:board).permit(:cells, :game_ended, :turn_name, :turn_counter)
-    end
 
     def render_response
         if @board.save
@@ -104,26 +100,43 @@ class BoardsController < ApplicationController
         false    
     end
 
-    def check_turn
-        return if @board.turn_name == params[:turn_name]
-        render status: 400, json: { message: "Debes esperar a que sea tu turno" }
-        false
+    # Busca el tablero con el codigo de la sala
+    def search_board_by_code
+        @board = Board.find_by(board_code: params[:board_code])
+        return if @board.present?
+        render status: 404, json: { message: "No se encuentra el tablero #{params[:board_code]}" }
+        false  
     end
 
+    # Verifica que sea el turno del jugador que realizo la jugada
+    def check_turn
+
+        @board_player = BoardPlayer.find_by(board_id: @board.id, player_id: params[:player_id])
+        if @board_player.persisted?
+            return if @board.turn_name == @board_player.chip
+            render status: 400, json: { message: "Debes esperar a que sea tu turno" }
+            false
+        else
+            render status: 400, json: { message: @board_player.errors.details }
+        end
+
+    end
+
+    # Verifica que no se hagan movimientos si la partida ya finalizo
     def check_game_ended
         return if @board.game_ended == false
         render status: 400, json: { message: "El juego ya ha terminado" }
         false
     end
 
+    # Verifica que no se hagan movimientos en una celda ya ocupada
     def check_empty_cell
         return if @board.cells[params[:row]][params[:cell]] == "" || @board.cells[params[:row]][params[:cell]] == nil
         render status: 400, json: { message: "La celda ya se encuentra ocupada" }
         false
     end
 
-    # funciona pero lo hace en el sigiuente movimiento - switch case?
-    # probar con que esta funcion devuelva un true o false y que arriba en un if depediendo de la respuesta vaya a cada render
+    # Verifica si hay un ganador controlando el valor actual de las celdas
     def check_win
         if @board.cells["0"]["0"] == current_turn && @board.cells["1"]["1"] == current_turn && @board.cells["2"]["2"] == current_turn
             render_endgame_response
@@ -155,7 +168,7 @@ class BoardsController < ApplicationController
 
     end
 
-    def check_draw 
+    def render_draw_response 
 
         @board.assign_attributes(game_ended: true)
 
@@ -179,7 +192,7 @@ class BoardsController < ApplicationController
     end
 
     def check_token
-        return if request.headers["Authorization"] == @board.token
+        return if request.headers["Authorization"] == "Bearer #{@board.token}"
         render status: 401, json: { message: "Invalid Token" }
         false
     end

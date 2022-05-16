@@ -12,6 +12,7 @@
 
 ActiveRecord::Schema[7.0].define(version: 2022_05_13_172032) do
   create_table "board_players", id: false, force: :cascade do |t|
+    t.string "chip"
     t.integer "board_id"
     t.integer "player_id"
     t.datetime "created_at", null: false
@@ -25,6 +26,7 @@ ActiveRecord::Schema[7.0].define(version: 2022_05_13_172032) do
     t.boolean "game_ended", default: false
     t.string "turn_name", default: "X"
     t.integer "turn_counter", default: 0
+    t.string "board_code"
     t.string "token"
     t.datetime "created_at", null: false
     t.datetime "updated_at", null: false

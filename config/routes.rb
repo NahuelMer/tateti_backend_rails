@@ -4,10 +4,8 @@ Rails.application.routes.draw do
     resources :boards, only: [:create]
   end
 
-  resources :boards, except: [:create] do
-    member do
-      post :join
-    end
-  end
+  resources :boards, except: [:create]
+
+  post 'boards/join'
 
 end
