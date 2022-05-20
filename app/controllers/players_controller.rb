@@ -24,16 +24,26 @@ class PlayersController < ApplicationController
 
     def destroy
         if @player.destroy
-            render status: 200
+            render status: 200, json: { message: "El jugador fue eliminado con exito"}
         else
             render_errors_response
+        end
+    end
+
+    # implementar bcryptjs.compareSync
+    def login
+        @player = Player.find_by(player_name: params[:player_name], password: params[:password])
+        if @player.present?
+            render status: 200, json: { player: @player }
+        else
+            render status: 400, json: { message: "Nombre o contraseña incorrecta" }
         end
     end
 
     private
 
     def player_params
-        params.require(:player).permit(:player_name)
+        params.require(:player).permit(:player_name, :password)
     end
 
     def render_response
